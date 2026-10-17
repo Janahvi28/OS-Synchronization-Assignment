@@ -36,5 +36,4 @@ common/            trace_html.py (recorder + HTML generator), shared_resource.py
 readers_writers/   rw_semaphore.py, rw_monitor.py
 dining_philosophers/ dp_semaphore.py, dp_monitor.py
 generated_html/    output pages
-docs/              report, screenshots, viva questions
 ```
