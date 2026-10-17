@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dining Philosophers - 4 philosophers (Semaphore)</title>
+<style>
+ :root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--txt:#e2e8f0;--mut:#94a3b8;--acc:#22d3ee}
+ *{box-sizing:border-box}
+ body{font-family:"Trebuchet MS",Verdana,sans-serif;background:linear-gradient(160deg,#0b1020,#1a1f3a);color:var(--txt);margin:0;min-height:100vh}
+ .wrap{max-width:1150px;margin:0 auto;padding:18px}
+ header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;border-bottom:2px solid var(--acc);padding-bottom:8px}
+ h1{margin:0;font-size:24px;letter-spacing:.5px} .sub{color:var(--mut);font-size:13px}
+ .badge{background:var(--acc);color:#06222b;font-weight:700;border-radius:20px;padding:3px 12px;font-size:12px}
+ .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+ .panel h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--acc)}
+ .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+ button{width:42px;height:38px;border:none;border-radius:50%;background:var(--acc);color:#06222b;font-size:17px;font-weight:700;cursor:pointer}
+ button:hover{filter:brightness(1.15)} #slider{flex:1;min-width:180px;accent-color:var(--acc)} .controls label{font-size:12px;color:var(--mut)}
+ .grid{display:grid;grid-template-columns:1.35fr 1fr;gap:14px} @media(max-width:850px){.grid{grid-template-columns:1fr}}
+ #log{height:250px;overflow-y:auto;font:12px Consolas,monospace}
+ #log div{padding:3px 6px;border-left:3px solid transparent;color:var(--mut)} #log div.cur{background:#0e3a47;border-color:var(--acc);color:#fff}
+ .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px}
+ .stat{background:#0f172a;border-radius:10px;padding:8px;text-align:center} .stat b{display:block;font-size:22px;color:var(--acc)} .stat span{font-size:11px;color:var(--mut)}
+ .zones{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:10px}
+ .zone{min-height:210px;border:2px dashed var(--line);border-radius:12px;padding:8px;text-align:center}
+ .zone h4{margin:0 0 8px;font-size:12px;color:var(--mut);letter-spacing:1px}
+ .zone.vault{border-color:var(--acc)} .zone.vault.w{border-color:#f43f5e;background:#3b1020} .zone.vault.r{background:#0e2f3a}
+ .chip{display:inline-block;margin:3px;padding:7px 11px;border-radius:9px;font-weight:700;font-size:14px;color:#0b1020;transition:all .3s}
+ .vtxt{font-size:13px;margin-bottom:8px;color:#fff}
+ .lane{display:flex;align-items:center;margin:6px 0;font-size:12px}
+ .lane span.nm{width:32px;color:var(--mut)} .lane .bar{position:relative;flex:1;height:16px;background:#0f172a;border-radius:8px;overflow:hidden}
+ .seg{position:absolute;top:0;height:16px}
+ .cursor{position:absolute;top:0;width:2px;height:16px;background:#fff;z-index:2}
+ .leg{margin-top:8px;font-size:12px;color:var(--mut)} .leg i{display:inline-block;width:11px;height:11px;border-radius:3px;margin:0 4px 0 14px}
+ pre{margin:0;font-size:12px;color:#cbd5e1;white-space:pre-wrap}
+</style></head><body><div class="wrap">
+<header><div><h1>Dining Philosophers - 4 philosophers (Semaphore)</h1><div class="sub" id="sub"></div></div><span class="badge">Replay of a real run</span></header>
+<div class="panel controls">
+ <button id="bPlay" title="play/pause">&#10074;&#10074;</button><button id="bStep" title="step">&#9197;</button><button id="bReset" title="reset">&#10226;</button>
+ <label>Speed <input type="range" id="speed" min="1" max="20" value="5"></label>
+ <input type="range" id="slider" min="0" value="0"><span id="cnt"></span>
+</div>
+<div class="grid">
+ <div class="panel"><h3>Live view</h3><div class="stats" id="stats"></div><div id="stage"></div></div>
+ <div class="panel"><h3>Event log</h3><div id="log"></div></div>
+</div>
+<div class="panel"><h3>Timeline (event order)</h3><div id="tl"></div><div class="leg" id="leg"></div></div>
+<div class="panel"><h3>Run summary</h3><pre id="sum"></pre></div>
+</div>
+<script>
+const D = {"subtitle": "semaphore-based", "kind": "dp", "threads": ["P0", "P1", "P2", "P3"], "forks": ["F0", "F1", "F2", "F3"], "initial": "thinking", "legend": ["thinking", "hungry", "acquiring", "eating", "releasing"], "events": [{"kind": "state", "thread": "P0", "state": "thinking", "msg": "P0 -> thinking (thinking)", "n": 1, "t": 0.056}, {"kind": "state", "thread": "P1", "state": "thinking", "msg": "P1 -> thinking (thinking)", "n": 2, "t": 0.056}, {"kind": "state", "thread": "P2", "state": "thinking", "msg": "P2 -> thinking (thinking)", "n": 3, "t": 0.056}, {"kind": "state", "thread": "P3", "state": "thinking", "msg": "P3 -> thinking (thinking)", "n": 4, "t": 0.057}, {"kind": "state", "thread": "P2", "state": "hungry", "msg": "P2 -> hungry (wants to eat)", "n": 5, "t": 0.185}, {"kind": "fork", "fork": "F2", "owner": "P2", "msg": "Fork F2 -> P2 (picked up left fork)", "n": 6, "t": 0.185}, {"kind": "state", "thread": "P2", "state": "acquiring", "msg": "P2 -> acquiring (holds F2, wants F3)", "n": 7, "t": 0.185}, {"kind": "fork", "fork": "F3", "owner": "P2", "msg": "Fork F3 -> P2 (picked up right fork)", "n": 8, "t": 0.336}, {"kind": "state", "thread": "P2", "state": "eating", "msg": "P2 -> eating (has F2 and F3)", "n": 9, "t": 0.337}, {"kind": "state", "thread": "P3", "state": "hungry", "msg": "P3 -> hungry (wants to eat)", "n": 10, "t": 0.349}, {"kind": "state", "thread": "P1", "state": "hungry", "msg": "P1 -> hungry (wants to eat)", "n": 11, "t": 0.432}, {"kind": "fork", "fork": "F1", "owner": "P1", "msg": "Fork F1 -> P1 (picked up left fork)", "n": 12, "t": 0.433}, {"kind": "state", "thread": "P1", "state": "acquiring", "msg": "P1 -> acquiring (holds F1, wants F2)", "n": 13, "t": 0.433}, {"kind": "state", "thread": "P0", "state": "hungry", "msg": "P0 -> hungry (wants to eat)", "n": 14, "t": 0.438}, {"kind": "state", "thread": "P2", "state": "releasing", "msg": "P2 -> releasing (putting both forks down)", "n": 15, "t": 0.535}, {"kind": "fork", "fork": "F2", "owner": null, "msg": "Fork F2 -> free (put down)", "n": 16, "t": 0.535}, {"kind": "fork", "fork": "F3", "owner": null, "msg": "Fork F3 -> free (put down)", "n": 17, "t": 0.535}, {"kind": "state", "thread": "P2", "state": "thinking", "msg": "P2 -> thinking (thinking)", "n": 18, "t": 0.535}, {"kind": "fork", "fork": "F3", "owner": "P3", "msg": "Fork F3 -> P3 (picked up left fork)", "n": 19, "t": 0.535}, {"kind": "state", "thread": "P3", "state": "acquiring", "msg": "P3 -> acquiring (holds F3, wants F0)", "n": 20, "t": 0.535}, {"kind": "fork", "fork": "F0", "owner": "P0", "msg": "Fork F0 -> P0 (picked up left fork)", "n": 21, "t": 0.535}, {"kind": "state", "thread": "P0", "state": "acquiring", "msg": "P0 -> acquiring (holds F0, wants F1)", "n": 22, "t": 0.535}, {"kind": "fork", "fork": "F2", "owner": "P1", "msg": "Fork F2 -> P1 (picked up right fork)", "n": 23, "t": 0.583}, {"kind": "state", "thread": "P1", "state": "eating", "msg": "P1 -> eating (has F1 and F2)", "n": 24, "t": 0.583}, {"kind": "state", "thread": "P2", "state": "hungry", "msg": "P2 -> hungry (wants to eat)", "n": 25, "t": 0.667}, {"kind": "state", "thread": "P1", "state": "releasing", "msg": "P1 -> releasing (putting both forks down)", "n": 26, "t": 0.742}, {"kind": "fork", "fork": "F1", "owner": null, "msg": "Fork F1 -> free (put down)", "n": 27, "t": 0.742}, {"kind": "fork", "fork": "F2", "owner": null, "msg": "Fork F2 -> free (put down)", "n": 28, "t": 0.742}, {"kind": "state", "thread": "P1", "state": "thinking", "msg": "P1 -> thinking (thinking)", "n": 29, "t": 0.742}, {"kind": "fork", "fork": "F2", "owner": "P2", "msg": "Fork F2 -> P2 (picked up left fork)", "n": 30, "t": 0.742}, {"kind": "state", "thread": "P2", "state": "acquiring", "msg": "P2 -> acquiring (holds F2, wants F3)", "n": 31, "t": 0.742}, {"kind": "fork", "fork": "F1", "owner": "P0", "msg": "Fork F1 -> P0 (picked up right fork)", "n": 32, "t": 0.742}, {"kind": "state", "thread": "P0", "state": "eating", "msg": "P0 -> eating (has F0 and F1)", "n": 33, "t": 0.742}, {"kind": "state", "thread": "P0", "state": "releasing", "msg": "P0 -> releasing (putting both forks down)", "n": 34, "t": 0.859}, {"kind": "fork", "fork": "F0", "owner": null, "msg": "Fork F0 -> free (put down)", "n": 35, "t": 0.859}, {"kind": "fork", "fork": "F1", "owner": null, "msg": "Fork F1 -> free (put down)", "n": 36, "t": 0.859}, {"kind": "state", "thread": "P0", "state": "thinking", "msg": "P0 -> thinking (thinking)", "n": 37, "t": 0.859}, {"kind": "fork", "fork": "F0", "owner": "P3", "msg": "Fork F0 -> P3 (picked up right fork)", "n": 38, "t": 0.859}, {"kind": "state", "thread": "P3", "state": "eating", "msg": "P3 -> eating (has F3 and F0)", "n": 39, "t": 0.859}, {"kind": "state", "thread": "P1", "state": "hungry", "msg": "P1 -> hungry (wants to eat)", "n": 40, "t": 0.943}, {"kind": "fork", "fork": "F1", "owner": "P1", "msg": "Fork F1 -> P1 (picked up left fork)", "n": 41, "t": 0.943}, {"kind": "state", "thread": "P1", "state": "acquiring", "msg": "P1 -> acquiring (holds F1, wants F2)", "n": 42, "t": 0.943}, {"kind": "state", "thread": "P3", "state": "releasing", "msg": "P3 -> releasing (putting both forks down)", "n": 43, "t": 1.039}, {"kind": "fork", "fork": "F3", "owner": null, "msg": "Fork F3 -> free (put down)", "n": 44, "t": 1.039}, {"kind": "fork", "fork": "F0", "owner": null, "msg": "Fork F0 -> free (put down)", "n": 45, "t": 1.039}, {"kind": "state", "thread": "P3", "state": "thinking", "msg": "P3 -> thinking (thinking)", "n": 46, "t": 1.039}, {"kind": "fork", "fork": "F3", "owner": "P2", "msg": "Fork F3 -> P2 (picked up right fork)", "n": 47, "t": 1.039}, {"kind": "state", "thread": "P2", "state": "eating", "msg": "P2 -> eating (has F2 and F3)", "n": 48, "t": 1.039}, {"kind": "state", "thread": "P0", "state": "hungry", "msg": "P0 -> hungry (wants to eat)", "n": 49, "t": 1.076}, {"kind": "fork", "fork": "F0", "owner": "P0", "msg": "Fork F0 -> P0 (picked up left fork)", "n": 50, "t": 1.076}, {"kind": "state", "thread": "P0", "state": "acquiring", "msg": "P0 -> acquiring (holds F0, wants F1)", "n": 51, "t": 1.076}, {"kind": "state", "thread": "P2", "state": "releasing", "msg": "P2 -> releasing (putting both forks down)", "n": 52, "t": 1.154}, {"kind": "fork", "fork": "F2", "owner": null, "msg": "Fork F2 -> free (put down)", "n": 53, "t": 1.154}, {"kind": "fork", "fork": "F3", "owner": null, "msg": "Fork F3 -> free (put down)", "n": 54, "t": 1.154}, {"kind": "state", "thread": "P2", "state": "thinking", "msg": "P2 -> thinking (thinking)", "n": 55, "t": 1.154}, {"kind": "fork", "fork": "F2", "owner": "P1", "msg": "Fork F2 -> P1 (picked up right fork)", "n": 56, "t": 1.154}, {"kind": "state", "thread": "P1", "state": "eating", "msg": "P1 -> eating (has F1 and F2)", "n": 57, "t": 1.154}, {"kind": "state", "thread": "P1", "state": "releasing", "msg": "P1 -> releasing (putting both forks down)", "n": 58, "t": 1.301}, {"kind": "fork", "fork": "F1", "owner": null, "msg": "Fork F1 -> free (put down)", "n": 59, "t": 1.301}, {"kind": "fork", "fork": "F2", "owner": null, "msg": "Fork F2 -> free (put down)", "n": 60, "t": 1.301}, {"kind": "state", "thread": "P1", "state": "thinking", "msg": "P1 -> thinking (thinking)", "n": 61, "t": 1.301}, {"kind": "fork", "fork": "F1", "owner": "P0", "msg": "Fork F1 -> P0 (picked up right fork)", "n": 62, "t": 1.301}, {"kind": "state", "thread": "P0", "state": "eating", "msg": "P0 -> eating (has F0 and F1)", "n": 63, "t": 1.301}, {"kind": "state", "thread": "P3", "state": "hungry", "msg": "P3 -> hungry (wants to eat)", "n": 64, "t": 1.342}, {"kind": "fork", "fork": "F3", "owner": "P3", "msg": "Fork F3 -> P3 (picked up left fork)", "n": 65, "t": 1.342}, {"kind": "state", "thread": "P3", "state": "acquiring", "msg": "P3 -> acquiring (holds F3, wants F0)", "n": 66, "t": 1.342}, {"kind": "state", "thread": "P2", "state": "hungry", "msg": "P2 -> hungry (wants to eat)", "n": 67, "t": 1.462}, {"kind": "fork", "fork": "F2", "owner": "P2", "msg": "Fork F2 -> P2 (picked up left fork)", "n": 68, "t": 1.462}, {"kind": "state", "thread": "P2", "state": "acquiring", "msg": "P2 -> acquiring (holds F2, wants F3)", "n": 69, "t": 1.464}, {"kind": "state", "thread": "P0", "state": "releasing", "msg": "P0 -> releasing (putting both forks down)", "n": 70, "t": 1.483}, {"kind": "fork", "fork": "F0", "owner": null, "msg": "Fork F0 -> free (put down)", "n": 71, "t": 1.484}, {"kind": "fork", "fork": "F1", "owner": null, "msg": "Fork F1 -> free (put down)", "n": 72, "t": 1.484}, {"kind": "state", "thread": "P0", "state": "thinking", "msg": "P0 -> thinking (thinking)", "n": 73, "t": 1.484}, {"kind": "fork", "fork": "F0", "owner": "P3", "msg": "Fork F0 -> P3 (picked up right fork)", "n": 74, "t": 1.561}, {"kind": "state", "thread": "P3", "state": "eating", "msg": "P3 -> eating (has F3 and F0)", "n": 75, "t": 1.561}, {"kind": "state", "thread": "P0", "state": "hungry", "msg": "P0 -> hungry (wants to eat)", "n": 76, "t": 1.656}, {"kind": "state", "thread": "P1", "state": "hungry", "msg": "P1 -> hungry (wants to eat)", "n": 77, "t": 1.748}, {"kind": "state", "thread": "P3", "state": "releasing", "msg": "P3 -> releasing (putting both forks down)", "n": 78, "t": 1.883}, {"kind": "fork", "fork": "F3", "owner": null, "msg": "Fork F3 -> free (put down)", "n": 79, "t": 1.883}, {"kind": "fork", "fork": "F0", "owner": null, "msg": "Fork F0 -> free (put down)", "n": 80, "t": 1.883}, {"kind": "state", "thread": "P3", "state": "thinking", "msg": "P3 -> thinking (thinking)", "n": 81, "t": 1.884}, {"kind": "fork", "fork": "F3", "owner": "P2", "msg": "Fork F3 -> P2 (picked up right fork)", "n": 82, "t": 1.884}, {"kind": "state", "thread": "P2", "state": "eating", "msg": "P2 -> eating (has F2 and F3)", "n": 83, "t": 1.884}, {"kind": "fork", "fork": "F0", "owner": "P0", "msg": "Fork F0 -> P0 (picked up left fork)", "n": 84, "t": 1.884}, {"kind": "state", "thread": "P0", "state": "acquiring", "msg": "P0 -> acquiring (holds F0, wants F1)", "n": 85, "t": 1.884}, {"kind": "fork", "fork": "F1", "owner": "P1", "msg": "Fork F1 -> P1 (picked up left fork)", "n": 86, "t": 1.891}, {"kind": "state", "thread": "P1", "state": "acquiring", "msg": "P1 -> acquiring (holds F1, wants F2)", "n": 87, "t": 1.891}, {"kind": "state", "thread": "P3", "state": "hungry", "msg": "P3 -> hungry (wants to eat)", "n": 88, "t": 2.188}, {"kind": "state", "thread": "P2", "state": "releasing", "msg": "P2 -> releasing (putting both forks down)", "n": 89, "t": 2.198}, {"kind": "fork", "fork": "F2", "owner": null, "msg": "Fork F2 -> free (put down)", "n": 90, "t": 2.198}, {"kind": "fork", "fork": "F3", "owner": null, "msg": "Fork F3 -> free (put down)", "n": 91, "t": 2.198}, {"kind": "state", "thread": "P2", "state": "thinking", "msg": "P2 -> thinking (finished all meals)", "n": 92, "t": 2.198}, {"kind": "fork", "fork": "F2", "owner": "P1", "msg": "Fork F2 -> P1 (picked up right fork)", "n": 93, "t": 2.198}, {"kind": "state", "thread": "P1", "state": "eating", "msg": "P1 -> eating (has F1 and F2)", "n": 94, "t": 2.198}, {"kind": "fork", "fork": "F3", "owner": "P3", "msg": "Fork F3 -> P3 (picked up left fork)", "n": 95, "t": 2.198}, {"kind": "state", "thread": "P3", "state": "acquiring", "msg": "P3 -> acquiring (holds F3, wants F0)", "n": 96, "t": 2.198}, {"kind": "state", "thread": "P1", "state": "releasing", "msg": "P1 -> releasing (putting both forks down)", "n": 97, "t": 2.426}, {"kind": "fork", "fork": "F1", "owner": null, "msg": "Fork F1 -> free (put down)", "n": 98, "t": 2.426}, {"kind": "fork", "fork": "F2", "owner": null, "msg": "Fork F2 -> free (put down)", "n": 99, "t": 2.426}, {"kind": "state", "thread": "P1", "state": "thinking", "msg": "P1 -> thinking (finished all meals)", "n": 100, "t": 2.426}, {"kind": "fork", "fork": "F1", "owner": "P0", "msg": "Fork F1 -> P0 (picked up right fork)", "n": 101, "t": 2.426}, {"kind": "state", "thread": "P0", "state": "eating", "msg": "P0 -> eating (has F0 and F1)", "n": 102, "t": 2.426}, {"kind": "state", "thread": "P0", "state": "releasing", "msg": "P0 -> releasing (putting both forks down)", "n": 103, "t": 2.555}, {"kind": "fork", "fork": "F0", "owner": null, "msg": "Fork F0 -> free (put down)", "n": 104, "t": 2.555}, {"kind": "fork", "fork": "F1", "owner": null, "msg": "Fork F1 -> free (put down)", "n": 105, "t": 2.555}, {"kind": "state", "thread": "P0", "state": "thinking", "msg": "P0 -> thinking (finished all meals)", "n": 106, "t": 2.555}, {"kind": "fork", "fork": "F0", "owner": "P3", "msg": "Fork F0 -> P3 (picked up right fork)", "n": 107, "t": 2.555}, {"kind": "state", "thread": "P3", "state": "eating", "msg": "P3 -> eating (has F3 and F0)", "n": 108, "t": 2.555}, {"kind": "state", "thread": "P3", "state": "releasing", "msg": "P3 -> releasing (putting both forks down)", "n": 109, "t": 2.836}, {"kind": "fork", "fork": "F3", "owner": null, "msg": "Fork F3 -> free (put down)", "n": 110, "t": 2.846}, {"kind": "fork", "fork": "F0", "owner": null, "msg": "Fork F0 -> free (put down)", "n": 111, "t": 2.846}, {"kind": "state", "thread": "P3", "state": "thinking", "msg": "P3 -> thinking (finished all meals)", "n": 112, "t": 2.846}], "summary": {"seed": 836285, "room_limit": 3, "meals_each_expected": 3, "meals_eaten": [3, 3, 3, 3], "neighbour_overlap_violations": 0, "deadlock": false}};
+const COL = {idle:"#64748b",waiting:"#fbbf24",reading:"#22d3ee",writing:"#f43f5e",done:"#475569",
+             thinking:"#818cf8",hungry:"#fbbf24",acquiring:"#fb923c",eating:"#34d399",releasing:"#e879f9"};
+const ev = D.events, N = ev.length;
+let k = 0, playing = true, timer = null;
+const $ = id => document.getElementById(id);
+$("sub").textContent = D.subtitle + "  |  " + D.threads.length + " threads  |  " + N + " recorded events";
+$("sum").textContent = JSON.stringify(D.summary, null, 2);
+$("slider").max = N;
+
+// Rebuild the world after k events (replay events 0..k-1)
+function snap(k){
+  const st = {}, fk = {}, c = {writes:0, reads:0, meals:{}};
+  D.threads.forEach(t => {st[t] = D.initial; c.meals[t] = 0;});
+  D.forks.forEach(f => fk[f] = null);
+  for (let i = 0; i < k; i++){
+    const e = ev[i];
+    if (e.kind === "state"){
+      const prev = st[e.thread];
+      if (prev==="writing" && e.state==="idle") c.writes++;
+      if (prev==="reading" && e.state==="idle") c.reads++;
+      if (prev==="eating" && e.state==="releasing") c.meals[e.thread]++;
+      st[e.thread] = e.state;
+    } else fk[e.fork] = e.owner;
+  }
+  return {st, fk, c};
+}
+const stat = (n,l) => `<div class="stat"><b>${n}</b><span>${l}</span></div>`;
+const chip = (t,s) => `<span class="chip" style="background:${COL[s]}">${t}</span>`;
+
+function stageRW(st, c){
+  const by = f => D.threads.filter(t => f(st[t]));
+  const wait = by(s=>s==="waiting"), rd = by(s=>s==="reading"), wr = by(s=>s==="writing"), out = by(s=>s==="idle"||s==="done");
+  let vcls = "zone vault", msg = "resource is FREE";
+  if (wr.length){vcls += " w"; msg = "exclusive WRITE by " + wr[0];}
+  else if (rd.length){vcls += " r"; msg = rd.length + " reader(s) sharing";}
+  $("stats").innerHTML = stat(rd.length,"readers inside")+stat(wr.length,"writers inside")+stat(wait.length,"waiting")+stat(c.reads,"reads done")+stat(c.writes,"writes done");
+  return `<div class="zones">
+    <div class="zone"><h4>WAITING ROOM</h4>${wait.map(t=>chip(t,"waiting")).join("")}</div>
+    <div class="${vcls}"><h4>SHARED RESOURCE</h4><div class="vtxt">${msg}</div>${rd.map(t=>chip(t,"reading")).join("")}${wr.map(t=>chip(t,"writing")).join("")}</div>
+    <div class="zone"><h4>OUTSIDE</h4>${out.map(t=>chip(t,st[t])).join("")}</div></div>`;
+}
+
+function stageDP(st, fk, c){
+  const cx=230, cy=210, R=150, n=D.threads.length;
+  const ang = i => (-90 + i*360/n) * Math.PI/180;
+  const used = D.forks.filter(f=>fk[f]).length;
+  $("stats").innerHTML = stat(used+"/"+D.forks.length,"forks in use")+D.threads.map(t=>stat(c.meals[t],t+" meals")).join("");
+  let s = `<svg viewBox="0 0 460 420" width="100%"><circle cx="${cx}" cy="${cy}" r="88" fill="#3b2a1a" stroke="#a16207" stroke-width="4"/>`;
+  const fpos = {};
+  D.forks.forEach((f,i) => { const a = ang(i)+Math.PI/n; fpos[f] = [cx+62*Math.cos(a), cy+62*Math.sin(a)]; });
+  D.threads.forEach((p,i) => {
+    const x = cx+R*Math.cos(ang(i)), y = cy+R*Math.sin(ang(i));
+    D.forks.forEach(f => { if (fk[f]===p) s += `<line x1="${x}" y1="${y}" x2="${fpos[f][0]}" y2="${fpos[f][1]}" stroke="${COL[st[p]]}" stroke-width="3" stroke-dasharray="2 5" stroke-linecap="round"/>`; });
+    s += `<rect x="${x-36}" y="${y-30}" width="72" height="60" rx="16" fill="${COL[st[p]]}"/>`+
+         `<text x="${x}" y="${y-3}" text-anchor="middle" font-weight="700" font-size="16" fill="#0b1020">${p}</text>`+
+         `<text x="${x}" y="${y+16}" text-anchor="middle" font-size="11" fill="#0b1020">${st[p]}</text>`;
+  });
+  D.forks.forEach(f => {
+    const [x,y]=fpos[f], o=fk[f];
+    s += `<polygon points="${x},${y-14} ${x+14},${y} ${x},${y+14} ${x-14},${y}" fill="${o?'#34d399':'#0f172a'}" stroke="#e2e8f0" stroke-width="1.5"/>`+
+         `<text x="${x}" y="${y+4}" text-anchor="middle" font-size="10" font-weight="700" fill="${o?'#0b1020':'#e2e8f0'}">${f}</text>`+
+         `<text x="${x}" y="${y+27}" text-anchor="middle" font-size="9" fill="#cbd5e1">${o||'free'}</text>`;
+  });
+  return s + "</svg>";
+}
+
+function buildTimeline(){
+  let h="";
+  D.threads.forEach(t => {
+    const pts=[[0,D.initial]];
+    ev.forEach((e,i)=>{ if(e.kind==="state"&&e.thread===t) pts.push([i+1,e.state]); });
+    h += `<div class="lane"><span class="nm">${t}</span><div class="bar">`;
+    pts.forEach((p,j)=>{ const end = j+1<pts.length?pts[j+1][0]:N;
+      h += `<div class="seg" style="left:${p[0]/N*100}%;width:${(end-p[0])/N*100}%;background:${COL[p[1]]}" title="${p[1]}"></div>`; });
+    h += `<div class="cursor"></div></div></div>`;
+  });
+  $("tl").innerHTML = h;
+  $("leg").innerHTML = D.legend.map(s => `<i style="background:${COL[s]}"></i>${s}`).join("");
+  $("log").innerHTML = ev.map((e,i)=>`<div id="e${i}">[${e.t.toFixed(3)}s] #${e.n} ${e.msg}</div>`).join("");
+}
+
+function render(){
+  const {st,fk,c} = snap(k);
+  $("stage").innerHTML = D.kind==="rw" ? stageRW(st,c) : stageDP(st,fk,c);
+  $("slider").value = k; $("cnt").textContent = k+" / "+N;
+  document.querySelectorAll(".cursor").forEach(x => x.style.left = (k/N*100)+"%");
+  document.querySelectorAll("#log .cur").forEach(d => d.classList.remove("cur"));
+  if (k>0){ const d=$("e"+(k-1)); d.classList.add("cur"); d.scrollIntoView({block:"nearest"}); }
+}
+function tick(){ if(k<N){k++;render();} else stop(); }
+function play(){ playing=true; $("bPlay").innerHTML="&#10074;&#10074;"; clearInterval(timer); timer=setInterval(tick,1000/$("speed").value); }
+function stop(){ playing=false; $("bPlay").innerHTML="&#9654;"; clearInterval(timer); }
+$("bPlay").onclick = () => { if(playing) stop(); else { if(k>=N) k=0; play(); } };
+$("bStep").onclick = () => { stop(); tick(); };
+$("bReset").onclick = () => { stop(); k=0; render(); };
+$("speed").oninput = () => { if(playing) play(); };
+$("slider").oninput = e => { k=+e.target.value; render(); };
+buildTimeline(); render(); play();
+</script></body></html>
